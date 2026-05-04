@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
-import { researcherAgent } from './researcher'
-import { implementationAgent } from './implementation'
-import { facilitatorAgent } from './facilitator'
+import { generateText, Output } from 'ai'
+import { z } from 'zod'
 import type { Repository, Proposal, AgentType, AgentStatus } from '@/lib/types'
 
 interface AgentLogEntry {
@@ -33,6 +32,22 @@ async function logAgentActivity(entry: AgentLogEntry) {
   })
 }
 
+// Schema for SEO analysis proposals
+const ProposalSchema = z.object({
+  title: z.string().describe('Clear title describing the SEO fix'),
+  description: z.string().describe('Why this matters for SEO'),
+  proposal_type: z.enum(['seo_meta', 'content', 'component', 'performance']),
+  file_path: z.string().describe('Path to the file that needs changes'),
+  original_content: z.string().nullable().describe('Original code snippet'),
+  proposed_content: z.string().describe('Proposed improved code'),
+  priority: z.enum(['high', 'medium', 'low']).describe('Impact priority'),
+})
+
+const SEOAnalysisSchema = z.object({
+  proposals: z.array(ProposalSchema).describe('List of SEO improvement proposals'),
+  summary: z.string().describe('Brief summary of the analysis'),
+})
+
 export async function runSEOScan(
   repository: Repository,
   userId: string,
@@ -52,76 +67,70 @@ export async function runSEOScan(
   try {
     // Build the analysis prompt with file contents
     const fileList = fileContents
-      .map(f => `File: ${f.path}\n\`\`\`\n${f.content.slice(0, 3000)}\n\`\`\``)
+      .map(f => `### File: ${f.path}\n\`\`\`\n${f.content.slice(0, 4000)}\n\`\`\``)
       .join('\n\n')
 
-    const result = await researcherAgent.generate({
-      prompt: `Analyze the following files from the repository "${repository.full_name}" for SEO improvements.
-      
+    // Use generateText with structured output
+    const result = await generateText({
+      model: 'google/gemini-2.5-flash-lite',
+      system: `You are an expert SEO analyst for Next.js/React applications. 
+Your job is to analyze code files and identify SEO improvement opportunities.
+
+Always provide actionable proposals with specific code changes. Focus on:
+1. Page metadata (title, description, Open Graph tags, Twitter cards)
+2. Heading structure (H1 presence, heading hierarchy)
+3. Image optimization (alt text, next/image usage)
+4. Semantic HTML and accessibility
+5. Performance optimizations (server vs client components)
+6. Structured data (JSON-LD schemas)
+
+For each issue, provide the exact code that should be added or changed.`,
+      prompt: `Analyze these files from "${repository.full_name}" and create SEO improvement proposals:
+
 ${fileList}
 
-IMPORTANT: You MUST call the createProposal tool for EACH issue you find. Do not just describe the issues - actually create proposals.
-
-Analyze each file and create improvement proposals. For each issue found, call createProposal with:
-- A clear title describing the fix
-- A detailed description of why this matters for SEO
-- The proposal type (seo_meta, content, component, or performance)
-- The file path
-- The original code snippet if applicable
-- The proposed improved code
-
-Focus on:
-1. Missing or incomplete metadata (title, description, OG tags)
-2. Heading structure issues (missing H1, multiple H1s, poor hierarchy)
-3. Image optimization opportunities (missing alt text, not using next/image)
-4. Performance-related SEO issues (client components that could be server)
-5. Structured data opportunities
-
-Even if the code looks good, create at least one proposal for potential improvements.`,
-      options: {
-        repositoryId: repository.id,
-        userId,
-        scanType,
-      },
+Create at least 2-3 proposals per file analyzed. Be specific with code suggestions.`,
+      output: Output.object({
+        schema: SEOAnalysisSchema,
+      }),
     })
 
     const durationMs = Date.now() - startTime
+    const analysis = result.output
 
-    // Extract proposals from tool results - check both toolResults and steps
-    let proposals: unknown[] = []
-    
-    // Try extracting from toolResults directly
-    if (result.toolResults && Array.isArray(result.toolResults)) {
-      proposals = result.toolResults
-        .filter((r: { toolName: string }) => r.toolName === 'createProposal')
-        .map((r: { result: unknown }) => r.result)
+    if (!analysis || !analysis.proposals) {
+      throw new Error('No analysis output received from AI')
     }
-    
-    // If no proposals found, try extracting from steps
-    if (proposals.length === 0 && result.steps && Array.isArray(result.steps)) {
-      for (const step of result.steps) {
-        if (step.toolCalls && Array.isArray(step.toolCalls)) {
-          for (const toolCall of step.toolCalls) {
-            if (toolCall.toolName === 'createProposal' && toolCall.result) {
-              proposals.push(toolCall.result)
-            }
-          }
-        }
-        if (step.toolResults && Array.isArray(step.toolResults)) {
-          for (const toolResult of step.toolResults) {
-            if (toolResult.toolName === 'createProposal' && toolResult.result) {
-              proposals.push(toolResult.result)
-            }
-          }
-        }
+
+    // Save proposals to database
+    const supabase = await createClient()
+    const savedProposals: Proposal[] = []
+
+    for (const proposal of analysis.proposals) {
+      const { data, error } = await supabase
+        .from('proposals')
+        .insert({
+          repository_id: repository.id,
+          title: proposal.title,
+          description: proposal.description,
+          proposal_type: proposal.proposal_type,
+          file_path: proposal.file_path,
+          original_content: proposal.original_content,
+          proposed_content: proposal.proposed_content,
+          status: 'pending',
+        })
+        .select()
+        .single()
+
+      if (!error && data) {
+        savedProposals.push(data as Proposal)
       }
     }
-    
+
     console.log('[v0] SEO Scan result:', {
-      stepsCount: result.steps?.length,
-      toolResultsCount: result.toolResults?.length,
-      proposalsFound: proposals.length,
-      text: result.text?.slice(0, 200),
+      proposalsGenerated: analysis.proposals.length,
+      proposalsSaved: savedProposals.length,
+      summary: analysis.summary,
     })
 
     await logAgentActivity({
@@ -130,19 +139,24 @@ Even if the code looks good, create at least one proposal for potential improvem
       agentType: 'researcher',
       action: `Completed ${scanType} SEO scan for ${repository.full_name}`,
       status: 'completed',
-      outputData: { proposalCount: proposals.length },
+      outputData: { 
+        proposalCount: savedProposals.length,
+        summary: analysis.summary,
+      },
       durationMs,
     })
 
     return {
       success: true,
-      proposals,
-      steps: result.steps.length,
+      proposals: savedProposals,
+      summary: analysis.summary,
       duration: durationMs,
     }
   } catch (error) {
     const durationMs = Date.now() - startTime
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+    console.error('[v0] SEO Scan error:', errorMessage)
 
     await logAgentActivity({
       userId,
@@ -180,33 +194,41 @@ export async function implementProposal(
   })
 
   try {
-    const result = await implementationAgent.generate({
-      prompt: `Implement the following SEO improvement proposal:
+    // Generate implementation details
+    const result = await generateText({
+      model: 'google/gemini-2.5-flash-lite',
+      system: `You are an expert developer implementing SEO improvements.
+Generate complete, production-ready code changes based on the proposal.`,
+      prompt: `Implement this SEO improvement:
 
 Title: ${proposal.title}
 Description: ${proposal.description}
 Type: ${proposal.proposal_type}
-File Path: ${proposal.file_path}
+File: ${proposal.file_path}
 
-${proposal.original_content ? `Original Content:\n\`\`\`\n${proposal.original_content}\n\`\`\`` : ''}
+Original code:
+\`\`\`
+${proposal.original_content || 'No original content provided'}
+\`\`\`
 
-${proposal.proposed_content ? `Proposed Changes:\n\`\`\`\n${proposal.proposed_content}\n\`\`\`` : ''}
+Proposed changes:
+\`\`\`
+${proposal.proposed_content}
+\`\`\`
 
-Generate the necessary code changes and prepare them for a Git commit.
-Use the prepareGitCommit tool when the implementation is complete.`,
-      options: {
-        proposalId: proposal.id,
-        repositoryId: repository.id,
-        userId,
-      },
+Generate the final implementation code that can be committed.`,
+      output: Output.object({
+        schema: z.object({
+          file_path: z.string(),
+          content: z.string().describe('The complete file content after changes'),
+          commit_message: z.string().describe('Git commit message'),
+          branch_name: z.string().describe('Suggested branch name'),
+        }),
+      }),
     })
 
     const durationMs = Date.now() - startTime
-
-    // Extract commit preparation from results
-    const commitPrep = result.toolResults.find(
-      (r: { toolName: string }) => r.toolName === 'prepareGitCommit'
-    )
+    const implementation = result.output
 
     await logAgentActivity({
       userId,
@@ -215,14 +237,16 @@ Use the prepareGitCommit tool when the implementation is complete.`,
       agentType: 'implementation',
       action: `Completed implementation for proposal: ${proposal.title}`,
       status: 'completed',
-      outputData: commitPrep?.result,
+      outputData: {
+        branch_name: implementation?.branch_name,
+        commit_message: implementation?.commit_message,
+      },
       durationMs,
     })
 
     return {
       success: true,
-      commitData: commitPrep?.result,
-      steps: result.steps.length,
+      implementation,
       duration: durationMs,
     }
   } catch (error) {
@@ -265,46 +289,35 @@ export async function notifyDiscord(
   })
 
   try {
-    let prompt = ''
+    const result = await generateText({
+      model: 'google/gemini-2.5-flash-lite',
+      system: `You are creating Discord notification messages for SEO proposals.
+Create engaging, clear messages with proper formatting.`,
+      prompt: `Create a Discord message for: ${action}
 
-    if (action === 'new_proposal') {
-      prompt = `Create a Discord message for a new SEO proposal:
-Title: ${proposal.title}
+Proposal: ${proposal.title}
 Description: ${proposal.description}
+Status: ${proposal.status}
 Type: ${proposal.proposal_type}
-File: ${proposal.file_path}
-Proposal ID: ${proposal.id}
+${proposal.preview_url ? `Preview: ${proposal.preview_url}` : ''}
+${proposal.pr_url ? `PR: ${proposal.pr_url}` : ''}
 
-Use the formatProposalMessage tool to create an engaging Discord embed.`
-    } else if (action === 'status_update') {
-      prompt = `Create a status update message for proposal ${proposal.id}:
-New Status: ${proposal.status}
-${additionalData?.previousStatus ? `Previous Status: ${additionalData.previousStatus}` : ''}
-${additionalData?.updatedBy ? `Updated By: ${additionalData.updatedBy}` : ''}
-
-Use the formatStatusUpdate tool.`
-    } else if (action === 'deployment_ready') {
-      prompt = `Create a deployment notification for proposal ${proposal.id}:
-Title: ${proposal.title}
-Preview URL: ${proposal.preview_url}
-PR URL: ${proposal.pr_url}
-Branch: ${proposal.branch_name}
-
-Use the formatDeploymentNotification tool.`
-    }
-
-    const result = await facilitatorAgent.generate({
-      prompt,
-      options: {
-        proposalId: proposal.id,
-        userId,
-      },
+${additionalData ? `Additional info: ${JSON.stringify(additionalData)}` : ''}`,
+      output: Output.object({
+        schema: z.object({
+          title: z.string(),
+          description: z.string(),
+          color: z.number().describe('Discord embed color as integer'),
+          fields: z.array(z.object({
+            name: z.string(),
+            value: z.string(),
+            inline: z.boolean().optional(),
+          })),
+        }),
+      }),
     })
 
     const durationMs = Date.now() - startTime
-
-    // Extract the formatted message
-    const messageResult = result.toolResults[0]?.result
 
     await logAgentActivity({
       userId,
@@ -312,13 +325,13 @@ Use the formatDeploymentNotification tool.`
       agentType: 'facilitator',
       action: `Created Discord notification for ${action}`,
       status: 'completed',
-      outputData: messageResult,
+      outputData: result.output,
       durationMs,
     })
 
     return {
       success: true,
-      message: messageResult,
+      message: result.output,
       duration: durationMs,
     }
   } catch (error) {
