@@ -128,9 +128,16 @@ export async function POST() {
   const applicationId = process.env.DISCORD_APPLICATION_ID
   const botToken = process.env.DISCORD_BOT_TOKEN
 
+  console.log('[v0] Discord register - App ID exists:', !!applicationId)
+  console.log('[v0] Discord register - Bot Token exists:', !!botToken)
+
   if (!applicationId || !botToken) {
     return NextResponse.json(
-      { error: 'Missing DISCORD_APPLICATION_ID or DISCORD_BOT_TOKEN' },
+      { 
+        error: 'Missing DISCORD_APPLICATION_ID or DISCORD_BOT_TOKEN',
+        hasAppId: !!applicationId,
+        hasBotToken: !!botToken,
+      },
       { status: 400 }
     )
   }
