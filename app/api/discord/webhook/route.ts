@@ -38,67 +38,81 @@ export async function POST(request: Request) {
       const supabase = await createClient()
 
       // ============================================
-      // /feedback <message> - Submit feedback for AI to process
+      // /propose <change> - Propose a change (main command for stakeholders)
       // ============================================
-      if (commandName === 'feedback') {
-        const feedbackMessage = options.find(o => o.name === 'message')?.value as string
+      if (commandName === 'propose' || commandName === 'feedback') {
+        const changeDescription = options.find(o => o.name === 'change')?.value as string 
+          || options.find(o => o.name === 'message')?.value as string
         const repoName = options.find(o => o.name === 'repo')?.value as string
 
-        if (!feedbackMessage) {
+        if (!changeDescription) {
           return NextResponse.json({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
-              content: 'Please provide feedback message. Usage: `/feedback message:"Your feedback here"`',
+              content: 'Please describe your proposed change.\n\nUsage: `/propose change:"Add a testimonials section to the homepage"`',
               flags: 64,
             },
           })
         }
 
-        // Find the repository linked to this Discord channel
+        // Find user by their linked Discord User ID
         const { data: profile } = await supabase
           .from('profiles')
-          .select('id, repositories(*)')
-          .eq('discord_channel_id', channelId)
+          .select('id, default_repository_id, github_access_token, repositories(*)')
+          .eq('discord_user_id', user?.id)
           .single()
 
-        let repository = profile?.repositories?.[0]
+        if (!profile) {
+          return NextResponse.json({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `Your Discord account is not linked. Please go to the SEO Agent dashboard and link your Discord account in Settings.\n\n**How to link:**\n1. Log into the SEO Agent dashboard\n2. Go to Settings\n3. Click "Link Discord Account"\n4. Enter your Discord User ID: \`${user?.id}\``,
+              flags: 64,
+            },
+          })
+        }
 
-        // If repo name provided, find that specific repo
-        if (repoName && profile) {
-          const repos = profile.repositories as Array<{ full_name: string; id: string }>
-          repository = repos?.find(r => r.full_name.includes(repoName))
+        // Get repository - use specified repo, default repo, or first available
+        let repository = null
+        const repos = profile.repositories as Array<{ full_name: string; id: string }> | null
+        
+        if (repoName && repos) {
+          repository = repos.find(r => r.full_name.toLowerCase().includes(repoName.toLowerCase()))
+        } else if (profile.default_repository_id && repos) {
+          repository = repos.find(r => r.id === profile.default_repository_id)
+        } else if (repos?.length) {
+          repository = repos[0]
         }
 
         if (!repository) {
           return NextResponse.json({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
-              content: 'No repository linked to this channel. Please configure Discord in your SEO Agent dashboard settings.',
+              content: 'No repository found. Please connect a repository in the SEO Agent dashboard first.',
               flags: 64,
             },
           })
         }
 
         // Acknowledge immediately (Discord requires response within 3 seconds)
-        // We'll process async and send follow-up
         const processingResponse = {
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: `Received feedback from **${user?.username || 'Unknown'}**:\n\n> ${feedbackMessage}\n\nAnalyzing and planning changes for **${(repository as { full_name: string }).full_name}**...\n\nI'll create a proposal and post the preview URL here when ready.`,
+            content: `**New Proposal from ${user?.username}**\n\n> ${changeDescription}\n\n**Repository:** ${repository.full_name}\n\nThe AI is analyzing your request and will:\n1. Plan the implementation\n2. Generate the code changes\n3. Create a pull request\n4. Deploy a preview\n\nI'll post the preview URL here when ready...`,
           },
         }
 
-        // Trigger the AI agent pipeline asynchronously
-        // Don't await - we need to respond to Discord quickly
-        triggerFeedbackPipeline({
-          feedback: feedbackMessage,
-          repositoryId: (repository as { id: string }).id,
+        // Trigger the AI pipeline asynchronously
+        triggerProposePipeline({
+          change: changeDescription,
+          repositoryId: repository.id,
+          userId: profile.id,
           discordUserId: user?.id || 'unknown',
           discordUsername: user?.username || 'Unknown',
-          channelId,
+          channelId: channelId || '',
           interactionToken: interaction.token,
           applicationId: interaction.application_id,
-        }).catch(err => console.error('Feedback pipeline error:', err))
+        }).catch(err => console.error('Propose pipeline error:', err))
 
         return NextResponse.json(processingResponse)
       }
@@ -419,6 +433,25 @@ function getStatusColor(status: string): number {
 // ============================================
 // Async Pipeline Triggers
 // ============================================
+
+async function triggerProposePipeline(params: {
+  change: string
+  repositoryId: string
+  userId: string
+  discordUserId: string
+  discordUsername: string
+  channelId: string
+  interactionToken: string
+  applicationId: string
+}) {
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+  
+  await fetch(`${baseUrl}/api/agents/propose`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+}
 
 async function triggerFeedbackPipeline(params: {
   feedback: string

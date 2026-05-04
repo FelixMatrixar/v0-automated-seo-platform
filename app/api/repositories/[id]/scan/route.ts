@@ -131,7 +131,7 @@ export async function POST(
     const body = await request.json().catch(() => ({}))
     const scanType = body.scanType || 'full'
 
-    // Run the SEO scan
+    // Run the SEO scan (proposals are saved directly by runSEOScan)
     const result = await runSEOScan(
       repository,
       user.id,
@@ -146,29 +146,6 @@ export async function POST(
       )
     }
 
-    // Save proposals to database
-    const proposals = []
-    for (const proposalData of result.proposals) {
-      const { data: proposal } = await supabase
-        .from('proposals')
-        .insert({
-          repository_id: repository.id,
-          title: proposalData.title,
-          description: proposalData.description,
-          proposal_type: proposalData.proposalType,
-          file_path: proposalData.filePath,
-          original_content: proposalData.originalContent,
-          proposed_content: proposalData.proposedContent,
-          status: 'pending',
-        })
-        .select()
-        .single()
-
-      if (proposal) {
-        proposals.push(proposal)
-      }
-    }
-
     // Update last scan time
     await supabase
       .from('repositories')
@@ -177,7 +154,8 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      proposals,
+      proposals: result.proposals,
+      summary: result.summary,
       filesAnalyzed: fileContents.length,
       duration: result.duration,
     })
