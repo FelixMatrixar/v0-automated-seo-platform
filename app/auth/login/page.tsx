@@ -19,7 +19,7 @@ export default function LoginPage() {
       provider: 'github',
       options: {
         redirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? 
-          `${window.location.origin}/auth/callback`,
+          `${process.env.NEXT_PUBLIC_SITE_URL || window.location.origin}/auth/callback`,
         scopes: 'repo read:user user:email',
       },
     })
