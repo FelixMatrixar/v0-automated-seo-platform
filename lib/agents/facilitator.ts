@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 // Facilitator Agent - Handles Discord communication and approval workflows
 export const facilitatorAgent = new ToolLoopAgent({
-  model: 'openai/gpt-5',
+  model: 'google/gemini-2.5-flash-lite',
   instructions: `You are a facilitator agent responsible for communication and workflow management. Your role is to:
 
 1. Create clear, concise Discord messages about SEO proposals

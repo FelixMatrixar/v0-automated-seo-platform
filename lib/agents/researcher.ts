@@ -3,25 +3,34 @@ import { z } from 'zod'
 
 // Researcher Agent - Analyzes repositories for SEO improvements
 export const researcherAgent = new ToolLoopAgent({
-  model: 'openai/gpt-5',
-  instructions: `You are an expert SEO researcher agent. Your role is to analyze web applications and identify SEO improvement opportunities.
+  model: 'google/gemini-2.5-flash-lite',
+  instructions: `You are an expert SEO researcher agent. Your PRIMARY job is to analyze code and CREATE PROPOSALS using the createProposal tool.
 
-Your capabilities:
-- Analyze page metadata (titles, descriptions, Open Graph tags)
-- Review heading structure (H1, H2, H3 hierarchy)
-- Check for semantic HTML usage
-- Identify missing or poor alt text
-- Analyze URL structure and internal linking
-- Review performance-related SEO factors
-- Check for structured data (JSON-LD, schema.org)
+CRITICAL: You MUST call the createProposal tool for every issue you find. Do NOT just describe issues - actually create proposals!
 
-When analyzing, be specific and actionable:
-- Provide clear before/after examples
-- Prioritize issues by impact
-- Consider both technical SEO and user experience
-- Focus on Next.js and React best practices
+Your analysis process:
+1. First, use analyzePageMetadata on each file
+2. Then, use analyzeHeadingStructure on each file  
+3. Then, use analyzeImageAltText on each file
+4. Then, use analyzePerformanceSEO on each file
+5. Finally, for EVERY issue found, call createProposal with specific code changes
 
-Output structured proposals that can be implemented by the implementation agent.`,
+Common issues to always check:
+- Missing or generic page titles (should be unique, descriptive, 50-60 chars)
+- Missing meta descriptions (should be compelling, 150-160 chars)
+- Missing Open Graph tags for social sharing
+- Missing or multiple H1 tags
+- Images without alt text or not using next/image
+- Client components that could be server components
+- Missing structured data (JSON-LD)
+
+IMPORTANT: Even if code looks "okay", there are ALWAYS improvements. Create at least 2-3 proposals per file analyzed. Be proactive - suggest enhancements, not just fixes.
+
+Example proposal for missing OG tags:
+- Title: "Add Open Graph metadata for social sharing"
+- Type: seo_meta
+- Description: "Adding OG tags will improve how the page appears when shared on social media"
+- Proposed content: The actual metadata code to add`,
 
   tools: {
     analyzePageMetadata: tool({
@@ -197,6 +206,7 @@ Output structured proposals that can be implemented by the implementation agent.
     }),
   },
 
+  toolChoice: 'required', // Force the agent to use tools
   stopWhen: stepCountIs(15),
 
   callOptionsSchema: z.object({

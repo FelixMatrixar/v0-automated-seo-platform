@@ -148,9 +148,42 @@ export function createDeploymentEmbed(proposal: {
   }
 }
 
+/**
+ * Send a follow-up message to a Discord interaction
+ * Used for async responses after the initial 3-second window
+ */
+export async function sendDiscordFollowUp(
+  applicationId: string,
+  interactionToken: string,
+  payload: DiscordWebhookPayload
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const url = `https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}`
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      const text = await response.text()
+      return { success: false, error: `Discord follow-up error (${response.status}): ${text}` }
+    }
+
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+}
+
 // Discord Interaction Types
 export interface DiscordInteraction {
   id: string
+  application_id: string
   type: number
   data?: {
     name: string
