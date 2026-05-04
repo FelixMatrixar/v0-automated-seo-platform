@@ -2,262 +2,146 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { CheckCircle, AlertCircle, Link2, ExternalLink, Copy } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { CheckCircle2, Loader2, Unlink } from 'lucide-react'
 
 interface DiscordLinkFormProps {
   discordUserId: string
+  discordUsername?: string
   defaultRepositoryId: string
   repositories: { id: string; full_name: string }[]
 }
 
 export function DiscordLinkForm({
   discordUserId,
+  discordUsername,
   defaultRepositoryId,
   repositories,
 }: DiscordLinkFormProps) {
-  const [userId, setUserId] = useState(discordUserId)
-  const [repoId, setRepoId] = useState(defaultRepositoryId)
-  const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
-  const [error, setError] = useState('')
-  const [showInstructions, setShowInstructions] = useState(!discordUserId)
+  const [selectedRepo, setSelectedRepo] = useState(defaultRepositoryId)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [unlinking, setUnlinking] = useState(false)
 
   const isLinked = !!discordUserId
 
-  const handleSave = async () => {
-    if (!userId.trim()) {
-      setError('Please enter your Discord User ID')
-      setStatus('error')
+  const handleConnectDiscord = () => {
+    const clientId = process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID
+    if (!clientId) {
+      alert('Discord integration not configured. Please contact support.')
       return
     }
+    
+    const redirectUri = `${window.location.origin}/auth/discord/callback`
+    const scope = 'identify'
+    
+    const url = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scope}`
+    window.location.href = url
+  }
 
-    setStatus('saving')
-    setError('')
-
+  const handleSaveRepo = async () => {
+    setSaving(true)
     try {
-      const response = await fetch('/api/settings/discord-link', {
+      const res = await fetch('/api/settings/discord-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          discord_user_id: userId.trim(),
-          default_repository_id: repoId || null,
-        }),
+        body: JSON.stringify({ default_repository_id: selectedRepo }),
       })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to save')
+      if (res.ok) {
+        setSaved(true)
+        setTimeout(() => setSaved(false), 3000)
       }
-
-      setStatus('success')
-      setTimeout(() => setStatus('idle'), 3000)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save')
-      setStatus('error')
+    } finally {
+      setSaving(false)
     }
   }
 
   const handleUnlink = async () => {
-    setStatus('saving')
-    
+    setUnlinking(true)
     try {
-      const response = await fetch('/api/settings/discord-link', {
+      const res = await fetch('/api/settings/discord-link', {
         method: 'DELETE',
       })
-
-      if (!response.ok) {
-        throw new Error('Failed to unlink')
+      if (res.ok) {
+        window.location.reload()
       }
-
-      setUserId('')
-      setRepoId('')
-      setStatus('success')
-      setShowInstructions(true)
-      setTimeout(() => setStatus('idle'), 3000)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to unlink')
-      setStatus('error')
+    } finally {
+      setUnlinking(false)
     }
   }
 
-  const copyBotInvite = () => {
-    const appId = process.env.NEXT_PUBLIC_DISCORD_APPLICATION_ID
-    const inviteUrl = `https://discord.com/api/oauth2/authorize?client_id=${appId}&permissions=2147483648&scope=bot%20applications.commands`
-    navigator.clipboard.writeText(inviteUrl)
+  if (!isLinked) {
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Connect your Discord to use <code className="bg-muted px-1.5 py-0.5 rounded text-xs">/propose</code> commands directly in Discord.
+        </p>
+        
+        <Button onClick={handleConnectDiscord} className="gap-2">
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+          </svg>
+          Connect Discord
+        </Button>
+      </div>
+    )
   }
 
   return (
-    <div className="space-y-6">
-      {isLinked ? (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 text-success">
-            <CheckCircle className="w-5 h-5" />
-            <span className="font-medium">Discord Account Linked</span>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-[#5865F2] flex items-center justify-center">
+            <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+            </svg>
           </div>
-          
-          <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Discord User ID</span>
-              <code className="text-sm font-mono bg-background px-2 py-1 rounded">{discordUserId}</code>
-            </div>
-            
-            {defaultRepositoryId && (
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Default Repository</span>
-                <span className="text-sm">{repositories.find(r => r.id === defaultRepositoryId)?.full_name || 'Unknown'}</span>
-              </div>
-            )}
-          </div>
-
-          <div className="bg-primary/10 rounded-lg p-4 space-y-2">
-            <p className="text-sm font-medium text-foreground">You can now use these commands in Discord:</p>
-            <ul className="text-sm text-muted-foreground space-y-1">
-              <li><code className="bg-background px-1 rounded">/propose</code> - Propose a change to your website</li>
-              <li><code className="bg-background px-1 rounded">/status</code> - Check the status of a proposal</li>
-              <li><code className="bg-background px-1 rounded">/approve</code> - Approve and deploy a proposal</li>
-              <li><code className="bg-background px-1 rounded">/reject</code> - Reject a proposal</li>
-            </ul>
-          </div>
-
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setShowInstructions(!showInstructions)}
-            >
-              {showInstructions ? 'Hide' : 'Edit'} Settings
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleUnlink}
-              disabled={status === 'saving'}
-            >
-              Unlink Account
-            </Button>
+          <div>
+            <p className="font-medium text-foreground">{discordUsername || 'Discord User'}</p>
+            <p className="text-xs text-muted-foreground">Connected</p>
           </div>
         </div>
-      ) : (
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Link2 className="w-5 h-5" />
-          <span>Link your Discord account to use slash commands</span>
+        <Badge variant="outline" className="bg-success/20 text-success border-success/30">
+          <CheckCircle2 className="w-3 h-3 mr-1" />
+          Linked
+        </Badge>
+      </div>
+
+      {repositories.length > 0 && (
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Default Repository</label>
+          <Select value={selectedRepo} onValueChange={setSelectedRepo}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select default repo for /propose" />
+            </SelectTrigger>
+            <SelectContent>
+              {repositories.map((repo) => (
+                <SelectItem key={repo.id} value={repo.id}>
+                  {repo.full_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button onClick={handleSaveRepo} disabled={saving || !selectedRepo} size="sm">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? 'Saved!' : 'Save'}
+          </Button>
         </div>
       )}
 
-      {(showInstructions || !isLinked) && (
-        <div className="space-y-6 pt-4 border-t border-border">
-          {/* Step 1: Get Discord User ID */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="rounded-full">1</Badge>
-              <h4 className="font-medium text-foreground">Get Your Discord User ID</h4>
-            </div>
-            <div className="ml-8 space-y-2">
-              <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
-                <li>Open Discord and go to Settings (gear icon)</li>
-                <li>Click on &quot;Advanced&quot; in the left sidebar</li>
-                <li>Enable &quot;Developer Mode&quot;</li>
-                <li>Right-click on your username anywhere and click &quot;Copy User ID&quot;</li>
-              </ol>
-            </div>
-          </div>
-
-          {/* Step 2: Enter User ID */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="rounded-full">2</Badge>
-              <h4 className="font-medium text-foreground">Enter Your User ID</h4>
-            </div>
-            <div className="ml-8 space-y-3">
-              <div>
-                <Label htmlFor="discord-user-id">Discord User ID</Label>
-                <Input
-                  id="discord-user-id"
-                  placeholder="e.g., 123456789012345678"
-                  value={userId}
-                  onChange={(e) => setUserId(e.target.value)}
-                  className="mt-1 font-mono"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Step 3: Select Default Repository */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="rounded-full">3</Badge>
-              <h4 className="font-medium text-foreground">Select Default Repository (Optional)</h4>
-            </div>
-            <div className="ml-8 space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Choose a default repository for quick commands without specifying a repo each time.
-              </p>
-              <Select value={repoId} onValueChange={setRepoId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a repository" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">None</SelectItem>
-                  {repositories.map((repo) => (
-                    <SelectItem key={repo.id} value={repo.id}>
-                      {repo.full_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Step 4: Invite Bot */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="rounded-full">4</Badge>
-              <h4 className="font-medium text-foreground">Invite the Bot to Your Server</h4>
-            </div>
-            <div className="ml-8 space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Add the SEO Agent bot to your Discord server to use slash commands.
-              </p>
-              <a
-                href={`https://discord.com/api/oauth2/authorize?client_id=${process.env.NEXT_PUBLIC_DISCORD_APPLICATION_ID || 'YOUR_APP_ID'}&permissions=2147483648&scope=bot%20applications.commands`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Button variant="outline" className="gap-2">
-                  <ExternalLink className="w-4 h-4" />
-                  Invite Bot to Server
-                </Button>
-              </a>
-            </div>
-          </div>
-
-          {/* Save Button */}
-          <div className="flex items-center gap-3">
-            <Button
-              onClick={handleSave}
-              disabled={status === 'saving'}
-            >
-              {status === 'saving' ? 'Saving...' : 'Link Account'}
-            </Button>
-
-            {status === 'success' && (
-              <span className="text-sm text-success flex items-center gap-1">
-                <CheckCircle className="w-4 h-4" />
-                Saved successfully
-              </span>
-            )}
-
-            {status === 'error' && (
-              <span className="text-sm text-destructive flex items-center gap-1">
-                <AlertCircle className="w-4 h-4" />
-                {error}
-              </span>
-            )}
-          </div>
+      <div className="pt-3 border-t border-border">
+        <p className="text-xs text-muted-foreground mb-2">Commands you can use in Discord:</p>
+        <div className="flex flex-wrap gap-2">
+          <code className="bg-muted px-2 py-1 rounded text-xs">/propose</code>
+          <code className="bg-muted px-2 py-1 rounded text-xs">/approve</code>
+          <code className="bg-muted px-2 py-1 rounded text-xs">/reject</code>
         </div>
-      )}
+      </div>
+
+      <Button variant="ghost" size="sm" className="text-destructive" onClick={handleUnlink} disabled={unlinking}>
+        {unlinking ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Unlink className="w-4 h-4 mr-1" />}
+        Disconnect
+      </Button>
     </div>
   )
 }

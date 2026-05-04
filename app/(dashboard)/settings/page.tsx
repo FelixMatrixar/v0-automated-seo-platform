@@ -120,6 +120,7 @@ export default async function SettingsPage() {
         <CardContent>
           <DiscordLinkForm 
             discordUserId={profile?.discord_user_id || ''}
+            discordUsername={profile?.discord_username || ''}
             defaultRepositoryId={profile?.default_repository_id || ''}
             repositories={repositories || []}
           />
