@@ -3,11 +3,21 @@ import { sendDiscordWebhook } from '@/lib/discord'
 
 export async function POST(request: Request) {
   try {
-    const { webhook_url } = await request.json()
+    let webhook_url: string | undefined
+    
+    // Try to get webhook_url from request body, fall back to env var
+    try {
+      const body = await request.json()
+      webhook_url = body.webhook_url
+    } catch {
+      // No body or invalid JSON - use env var
+    }
+    
+    webhook_url = webhook_url || process.env.DISCORD_WEBHOOK_URL
 
     if (!webhook_url) {
       return NextResponse.json(
-        { error: 'Webhook URL is required' },
+        { error: 'DISCORD_WEBHOOK_URL is not configured' },
         { status: 400 }
       )
     }

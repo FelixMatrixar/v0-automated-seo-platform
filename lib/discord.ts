@@ -29,9 +29,10 @@ export async function sendDiscordWebhook(
       }),
     })
 
+    // Discord returns 204 No Content on success
     if (!response.ok) {
       const text = await response.text()
-      return { success: false, error: `Discord API error: ${text}` }
+      return { success: false, error: `Discord API error (${response.status}): ${text}` }
     }
 
     return { success: true }
