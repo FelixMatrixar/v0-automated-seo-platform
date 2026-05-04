@@ -220,3 +220,41 @@ export function verifyDiscordRequest(
   
   return true // Placeholder - implement proper verification in production
 }
+
+/**
+ * Get the Discord webhook URL for a user
+ * Falls back to global env var if user hasn't configured their own
+ */
+export async function getUserWebhookUrl(userId: string): Promise<string | null> {
+  // Import dynamically to avoid circular dependencies
+  const { createClient } = await import('@/lib/supabase/server')
+  const supabase = await createClient()
+  
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('discord_webhook_url')
+    .eq('id', userId)
+    .single()
+  
+  // Use user's webhook if configured, otherwise fall back to global
+  return profile?.discord_webhook_url || process.env.DISCORD_WEBHOOK_URL || null
+}
+
+/**
+ * Send a notification to a user's configured Discord channel
+ */
+export async function sendUserNotification(
+  userId: string,
+  payload: DiscordWebhookPayload
+): Promise<{ success: boolean; error?: string }> {
+  const webhookUrl = await getUserWebhookUrl(userId)
+  
+  if (!webhookUrl) {
+    return { 
+      success: false, 
+      error: 'No Discord webhook configured. Please set up Discord in Settings.' 
+    }
+  }
+  
+  return sendDiscordWebhook(webhookUrl, payload)
+}

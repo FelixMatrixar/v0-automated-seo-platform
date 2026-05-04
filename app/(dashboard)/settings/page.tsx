@@ -2,7 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { User, Github, Key, Shield } from 'lucide-react'
+import { User, Github, Shield, MessageSquare } from 'lucide-react'
+import { DiscordSetupForm } from '@/components/settings/discord-setup-form'
 
 export default async function SettingsPage() {
   const supabase = await createClient()
@@ -19,7 +20,7 @@ export default async function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Settings</h1>
         <p className="text-muted-foreground">
-          Manage your account and preferences
+          Manage your account and integrations
         </p>
       </div>
 
@@ -95,50 +96,25 @@ export default async function SettingsPage() {
             </div>
             <Badge variant="outline">repo scope</Badge>
           </div>
-
-          <div className="pt-2">
-            <Button variant="outline" size="sm">
-              Reconnect GitHub
-            </Button>
-          </div>
         </CardContent>
       </Card>
 
-      {/* API Keys */}
+      {/* Discord Integration */}
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <Key className="w-5 h-5" />
-            API Configuration
+            <MessageSquare className="w-5 h-5" />
+            Discord Integration
           </CardTitle>
           <CardDescription>
-            Configure external service API keys
+            Connect your Discord server to receive SEO proposal notifications
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
-            <div>
-              <p className="text-sm font-medium text-foreground">OpenAI API Key</p>
-              <p className="text-xs text-muted-foreground">
-                Required for AI agent functionality
-              </p>
-            </div>
-            <Badge variant="outline" className="bg-success/20 text-success border-success/30">
-              Configured
-            </Badge>
-          </div>
-
-          <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
-            <div>
-              <p className="text-sm font-medium text-foreground">Discord Bot Token</p>
-              <p className="text-xs text-muted-foreground">
-                Required for Discord integration
-              </p>
-            </div>
-            <Badge variant="outline" className="bg-warning/20 text-warning border-warning/30">
-              Not Set
-            </Badge>
-          </div>
+        <CardContent>
+          <DiscordSetupForm 
+            initialWebhookUrl={profile?.discord_webhook_url || ''} 
+            initialChannelId={profile?.discord_channel_id || ''}
+          />
         </CardContent>
       </Card>
 
