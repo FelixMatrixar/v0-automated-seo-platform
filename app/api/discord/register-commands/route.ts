@@ -3,6 +3,24 @@ import { NextResponse } from 'next/server'
 // Discord slash command definitions
 const commands = [
   {
+    name: 'propose',
+    description: 'Propose a change to your website - AI will implement it automatically',
+    options: [
+      {
+        name: 'change',
+        description: 'Describe the change you want (e.g., "Add a testimonials section")',
+        type: 3, // STRING
+        required: true,
+      },
+      {
+        name: 'repo',
+        description: 'Repository name (uses default if not specified)',
+        type: 3, // STRING
+        required: false,
+      },
+    ],
+  },
+  {
     name: 'feedback',
     description: 'Submit feedback for the AI to analyze and create improvements',
     options: [

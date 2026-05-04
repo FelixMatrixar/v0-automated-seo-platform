@@ -2,8 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { User, Github, Shield, MessageSquare } from 'lucide-react'
+import { User, Github, Shield, MessageSquare, Link2 } from 'lucide-react'
 import { DiscordSetupForm } from '@/components/settings/discord-setup-form'
+import { DiscordLinkForm } from '@/components/settings/discord-link-form'
 
 export default async function SettingsPage() {
   const supabase = await createClient()
@@ -14,6 +15,12 @@ export default async function SettingsPage() {
     .select('*')
     .eq('id', user?.id)
     .single()
+
+  const { data: repositories } = await supabase
+    .from('repositories')
+    .select('id, full_name')
+    .eq('user_id', user?.id)
+    .eq('is_active', true)
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -99,15 +106,35 @@ export default async function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Discord Integration */}
+      {/* Discord Account Link */}
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Link2 className="w-5 h-5" />
+            Link Discord Account
+          </CardTitle>
+          <CardDescription>
+            Link your Discord account to propose changes directly from Discord
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DiscordLinkForm 
+            discordUserId={profile?.discord_user_id || ''}
+            defaultRepositoryId={profile?.default_repository_id || ''}
+            repositories={repositories || []}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Discord Webhook */}
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <MessageSquare className="w-5 h-5" />
-            Discord Integration
+            Discord Notifications
           </CardTitle>
           <CardDescription>
-            Connect your Discord server to receive SEO proposal notifications
+            Receive notifications when proposals are created or deployed
           </CardDescription>
         </CardHeader>
         <CardContent>
