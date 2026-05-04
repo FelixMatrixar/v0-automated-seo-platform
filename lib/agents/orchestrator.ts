@@ -60,14 +60,24 @@ export async function runSEOScan(
       
 ${fileList}
 
-Please analyze each file and create improvement proposals where needed. Focus on:
-1. Missing or incomplete metadata
-2. Heading structure issues
-3. Image optimization opportunities
-4. Performance-related SEO issues
+IMPORTANT: You MUST call the createProposal tool for EACH issue you find. Do not just describe the issues - actually create proposals.
+
+Analyze each file and create improvement proposals. For each issue found, call createProposal with:
+- A clear title describing the fix
+- A detailed description of why this matters for SEO
+- The proposal type (seo_meta, content, component, or performance)
+- The file path
+- The original code snippet if applicable
+- The proposed improved code
+
+Focus on:
+1. Missing or incomplete metadata (title, description, OG tags)
+2. Heading structure issues (missing H1, multiple H1s, poor hierarchy)
+3. Image optimization opportunities (missing alt text, not using next/image)
+4. Performance-related SEO issues (client components that could be server)
 5. Structured data opportunities
 
-Use the createProposal tool for each improvement you identify.`,
+Even if the code looks good, create at least one proposal for potential improvements.`,
       options: {
         repositoryId: repository.id,
         userId,
@@ -77,10 +87,42 @@ Use the createProposal tool for each improvement you identify.`,
 
     const durationMs = Date.now() - startTime
 
-    // Extract proposals from tool results
-    const proposals = result.toolResults
-      .filter((r: { toolName: string }) => r.toolName === 'createProposal')
-      .map((r: { result: unknown }) => r.result)
+    // Extract proposals from tool results - check both toolResults and steps
+    let proposals: unknown[] = []
+    
+    // Try extracting from toolResults directly
+    if (result.toolResults && Array.isArray(result.toolResults)) {
+      proposals = result.toolResults
+        .filter((r: { toolName: string }) => r.toolName === 'createProposal')
+        .map((r: { result: unknown }) => r.result)
+    }
+    
+    // If no proposals found, try extracting from steps
+    if (proposals.length === 0 && result.steps && Array.isArray(result.steps)) {
+      for (const step of result.steps) {
+        if (step.toolCalls && Array.isArray(step.toolCalls)) {
+          for (const toolCall of step.toolCalls) {
+            if (toolCall.toolName === 'createProposal' && toolCall.result) {
+              proposals.push(toolCall.result)
+            }
+          }
+        }
+        if (step.toolResults && Array.isArray(step.toolResults)) {
+          for (const toolResult of step.toolResults) {
+            if (toolResult.toolName === 'createProposal' && toolResult.result) {
+              proposals.push(toolResult.result)
+            }
+          }
+        }
+      }
+    }
+    
+    console.log('[v0] SEO Scan result:', {
+      stepsCount: result.steps?.length,
+      toolResultsCount: result.toolResults?.length,
+      proposalsFound: proposals.length,
+      text: result.text?.slice(0, 200),
+    })
 
     await logAgentActivity({
       userId,
