@@ -237,21 +237,31 @@ export function verifyDiscordRequest(
   body: string,
   publicKey: string
 ): boolean {
-  // In production, use a library like 'tweetnacl' for verification
-  // For now, we'll skip verification in development
-  if (process.env.NODE_ENV === 'development') {
-    return true
-  }
+  try {
+    // Skip verification if no public key
+    if (!publicKey || !signature || !timestamp) {
+      console.log('[v0] Discord verification skipped - missing params')
+      return false
+    }
 
-  // Implement proper verification using tweetnacl
-  // const nacl = require('tweetnacl')
-  // return nacl.sign.detached.verify(
-  //   Buffer.from(timestamp + body),
-  //   Buffer.from(signature, 'hex'),
-  //   Buffer.from(publicKey, 'hex')
-  // )
-  
-  return true // Placeholder - implement proper verification in production
+    // Use tweetnacl for Ed25519 signature verification
+    const nacl = require('tweetnacl')
+    
+    const message = Buffer.from(timestamp + body)
+    const sig = Buffer.from(signature, 'hex')
+    const key = Buffer.from(publicKey, 'hex')
+    
+    const isValid = nacl.sign.detached.verify(message, sig, key)
+    
+    if (!isValid) {
+      console.log('[v0] Discord signature verification failed')
+    }
+    
+    return isValid
+  } catch (error) {
+    console.error('[v0] Discord verification error:', error)
+    return false
+  }
 }
 
 /**
