@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 // Implementation Agent - Generates code and creates PRs
 export const implementationAgent = new ToolLoopAgent({
-  model: 'openai/gpt-5',
+  model: 'google/gemini-2.5-flash-lite',
   instructions: `You are an expert implementation agent specializing in Next.js and React development. Your role is to implement SEO improvements by generating code and creating pull requests.
 
 Your capabilities:

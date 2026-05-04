@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 // Researcher Agent - Analyzes repositories for SEO improvements
 export const researcherAgent = new ToolLoopAgent({
-  model: 'openai/gpt-5',
+  model: 'google/gemini-2.5-flash-lite',
   instructions: `You are an expert SEO researcher agent. Your PRIMARY job is to analyze code and CREATE PROPOSALS using the createProposal tool.
 
 CRITICAL: You MUST call the createProposal tool for every issue you find. Do NOT just describe issues - actually create proposals!
