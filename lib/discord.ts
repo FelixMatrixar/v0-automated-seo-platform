@@ -258,3 +258,80 @@ export async function sendUserNotification(
   
   return sendDiscordWebhook(webhookUrl, payload)
 }
+
+/**
+ * Send a proposal notification to Discord
+ * Uses the global webhook URL (for platform-level notifications)
+ */
+export async function sendProposalNotification(
+  proposal: {
+    id: string
+    title: string
+    description?: string | null
+    status: string
+    proposal_type: string
+    file_path?: string | null
+    pr_url?: string | null
+    preview_url?: string | null
+    branch_name?: string | null
+  },
+  repoFullName: string
+): Promise<{ success: boolean; error?: string }> {
+  const webhookUrl = process.env.DISCORD_WEBHOOK_URL
+  
+  if (!webhookUrl) {
+    return { success: false, error: 'DISCORD_WEBHOOK_URL not configured' }
+  }
+  
+  const statusColors: Record<string, number> = {
+    pending: 0xffaa00,
+    approved: 0x44ff44,
+    rejected: 0xff4444,
+    deployed: 0x00aaff,
+    merged: 0x9944ff,
+  }
+  
+  const statusEmojis: Record<string, string> = {
+    pending: '⏳',
+    approved: '✅',
+    rejected: '❌',
+    deployed: '🚀',
+    merged: '🔀',
+  }
+  
+  const typeLabels: Record<string, string> = {
+    seo_meta: 'SEO Metadata',
+    content: 'Content Update',
+    component: 'Component Change',
+    performance: 'Performance Fix',
+  }
+  
+  const fields: { name: string; value: string; inline?: boolean }[] = [
+    { name: 'Repository', value: repoFullName, inline: true },
+    { name: 'Type', value: typeLabels[proposal.proposal_type] || proposal.proposal_type, inline: true },
+    { name: 'Status', value: `${statusEmojis[proposal.status] || ''} ${proposal.status.toUpperCase()}`, inline: true },
+  ]
+  
+  if (proposal.file_path) {
+    fields.push({ name: 'File', value: `\`${proposal.file_path}\``, inline: false })
+  }
+  
+  if (proposal.preview_url) {
+    fields.push({ name: 'Preview', value: proposal.preview_url, inline: true })
+  }
+  
+  if (proposal.pr_url) {
+    fields.push({ name: 'Pull Request', value: proposal.pr_url, inline: true })
+  }
+  
+  return sendDiscordWebhook(webhookUrl, {
+    embeds: [{
+      title: `${statusEmojis[proposal.status] || '📋'} ${proposal.title}`,
+      description: proposal.description || 'No description provided',
+      color: statusColors[proposal.status] || 0x5865f2,
+      fields,
+      footer: { text: `Proposal ID: ${proposal.id}` },
+      timestamp: new Date().toISOString(),
+    }],
+  })
+}
